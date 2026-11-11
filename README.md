@@ -23,3 +23,8 @@ Kostenlose Web-App für iPhone, Android und Desktop. **Unabhängig von der Andro
 
 ## Version 2 – Benannte Routen
 Im Abschnitt „Meine gespeicherten Routen“ einen Namen eingeben und „Unter Namen speichern“ wählen. Vorhandene Routen können geladen, umbenannt oder gelöscht werden. Gleichnamige Routen können nach Bestätigung überschrieben werden. Die bisherige Schnell-Speicherung bleibt unverändert. Daten liegen im lokalen Browser-Speicher (localStorage), ohne Cloud-Synchronisierung.
+
+
+## Version 3 – Spracheingabe
+
+Mikrofon-Schaltflächen neben Start- und Zwischenstopp-Adresse. Die Browser-Spracherkennung (Web Speech API) nutzt Deutsch (`de-DE`) und setzt den erkannten Text ins Eingabefeld. Anschließend bitte einen Adressvorschlag auswählen. Die Verfügbarkeit variiert nach Browser und Betriebssystem; alternativ kann die Mikrofontaste der Smartphone-Tastatur verwendet werden. Internet und Mikrofonberechtigung können erforderlich sein. Die bisherigen Speicher-Schlüssel bleiben unverändert.

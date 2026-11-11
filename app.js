@@ -12,6 +12,44 @@ function setupAutocomplete(inputId,listId,onSelect){let timer,token=0;$(inputId)
 setupAutocomplete('search','suggestions',x=>addStop(x.name,x.lat,x.lon));
 setupAutocomplete('start','startSuggestions',x=>{state.start=x;$('start').value=x.name});
 $('start').addEventListener('input',()=>{state.start={name:$('start').value,lat:null,lon:null}});
+// Optionale Browser-Spracherkennung. Die Adressvorschläge bleiben die Bestätigung.
+(function setupSpeechInput(){
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  const buttons=[{id:'micStart',input:'start'},{id:'micSearch',input:'search'}];
+  let active=null;
+  const notice=message=>{$('speechStatus').textContent=message};
+  const reset=()=>{if(active){active.button.classList.remove('listening');active.button.setAttribute('aria-pressed','false');active=null}};
+  if(!SpeechRecognition){
+    buttons.forEach(({id})=>{$(id).title='Spracherkennung in diesem Browser nicht verfügbar';$(id).addEventListener('click',()=>notice('Spracherkennung wird hier nicht unterstützt. Bitte die Tastatur bzw. die Mikrofontaste der Smartphone-Tastatur verwenden.'))});
+    return;
+  }
+  buttons.forEach(({id,input})=>{
+    const button=$(id);
+    button.setAttribute('aria-pressed','false');
+    button.addEventListener('click',()=>{
+      if(active){const wasSame=active.button===button;const old=active.recognition;reset();old.abort();if(wasSame){notice('Spracheingabe abgebrochen.');return}}
+      const recognition=new SpeechRecognition();
+      recognition.lang='de-DE';recognition.interimResults=false;recognition.maxAlternatives=1;recognition.continuous=false;
+      active={button,recognition};button.classList.add('listening');button.setAttribute('aria-pressed','true');
+      notice('🎤 Bitte jetzt die Adresse sprechen …');
+      recognition.onresult=event=>{
+        if(!active||active.recognition!==recognition)return;
+        const spoken=event.results?.[0]?.[0]?.transcript?.trim();
+        if(!spoken)return;
+        const field=$(input);field.value=spoken;
+        field.dispatchEvent(new Event('input',{bubbles:true}));
+        notice('Erkannt: „'+spoken+'“. Bitte passenden Adressvorschlag auswählen.');
+      };
+      recognition.onerror=event=>{
+        if(!active||active.recognition!==recognition)return;
+        const messages={'not-allowed':'Mikrofonzugriff verweigert. Bitte Berechtigung prüfen.','audio-capture':'Kein Mikrofon verfügbar.','no-speech':'Keine Sprache erkannt. Bitte erneut versuchen.','network':'Spracherkennung benötigt möglicherweise Internet.','language-not-supported':'Deutsche Spracherkennung nicht verfügbar.','service-not-allowed':'Spracherkennung vom Browser nicht erlaubt.'};
+        if(event.error!=='aborted')notice(messages[event.error]||'Spracheingabe fehlgeschlagen ('+event.error+'). Bitte manuell eingeben.');
+      };
+      recognition.onend=()=>{if(active?.recognition===recognition)reset()};
+      try{recognition.start()}catch(error){reset();notice('Spracheingabe konnte nicht gestartet werden: '+error.message)}
+    });
+  });
+})();
 $('insert').onclick=()=>addStop($('search').value);
 $('add').onclick=()=>{$('search').focus();setStatus('Adresse eingeben und auf „Hinzufügen“ tippen.')};
 $('gps').onclick=()=>{if(!navigator.geolocation){setStatus('GPS wird nicht unterstützt.');return}setStatus('GPS-Standort wird ermittelt …');navigator.geolocation.getCurrentPosition(p=>{state.start={name:'Mein GPS-Standort',lat:p.coords.latitude,lon:p.coords.longitude};$('start').value=state.start.name;setStatus('GPS-Standort übernommen.')},e=>setStatus('GPS nicht verfügbar: '+e.message),{enableHighAccuracy:true,timeout:15000})};
