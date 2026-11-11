@@ -19,3 +19,7 @@ Kostenlose Web-App für iPhone, Android und Desktop. **Unabhängig von der Andro
 - GPS erfordert HTTPS und eine Standortfreigabe.
 - Lokale Speicherung ist geräte- und browserbezogen. Keine Synchronisierung zwischen Geräten.
 - Prüfe die Datenschutzerklärung, bevor du die PWA öffentlich bewirbst: Standort und Adressanfragen gehen bei Nutzung an externe Kartendienste.
+
+
+## Version 2 – Benannte Routen
+Im Abschnitt „Meine gespeicherten Routen“ einen Namen eingeben und „Unter Namen speichern“ wählen. Vorhandene Routen können geladen, umbenannt oder gelöscht werden. Gleichnamige Routen können nach Bestätigung überschrieben werden. Die bisherige Schnell-Speicherung bleibt unverändert. Daten liegen im lokalen Browser-Speicher (localStorage), ohne Cloud-Synchronisierung.
