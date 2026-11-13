@@ -7,13 +7,38 @@ function render(){const root=$('stops');root.replaceChildren();$('count').textCo
 function move(a,b){if(a===b||a<0||b<0||a>=state.stops.length||b>=state.stops.length)return;state.stops.splice(b,0,state.stops.splice(a,1)[0]);render()}
 function addStop(name,lat=null,lon=null){name=name.trim();if(!name)return;state.stops.push({name,lat,lon,done:false});$('search').value='';$('suggestions').replaceChildren();render()}
 function label(f){const p=f.properties||{};return [p.name,p.street,p.housenumber,p.postcode,p.city,p.state,p.country].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(', ')}
-// Version 4: Geografische Suche mit Luftlinien-Sortierung relativ zum Startpunkt.
+// Version 5: Suche am Startpunkt, sonst am bereits erlaubten GPS-Standort.
 function validCoords(p){return p&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)}
 function distanceKm(a,b){const rad=x=>x*Math.PI/180;const dl=rad(b.lat-a.lat),dn=rad(b.lon-a.lon);const h=Math.sin(dl/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dn/2)**2;return 12742*Math.asin(Math.min(1,Math.sqrt(h)))}
 async function lookup(q,origin=null,limit=6){const u=new URL('https://photon.komoot.io/api/');u.searchParams.set('q',q);u.searchParams.set('lang','de');u.searchParams.set('limit',String(limit));if(validCoords(origin)){u.searchParams.set('lat',String(origin.lat));u.searchParams.set('lon',String(origin.lon))}const r=await fetch(u);if(!r.ok)throw Error('Adressdienst nicht erreichbar');const j=await r.json();const found=(j.features||[]).filter(f=>Array.isArray(f.geometry?.coordinates)).map(f=>({name:label(f),lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]})).filter(validCoords);if(validCoords(origin)){found.forEach(f=>f.distanceKm=distanceKm(origin,f));found.sort((a,b)=>a.distanceKm-b.distanceKm)}return found.slice(0,6)}
 let originLookup=null;
+// GPS ist nur ein Suchbezug, KEIN Ersatz für den Startpunkt der Route.
+// Keine neue Standort-Berechtigungsabfrage während des Tippens auslösen.
+let gpsSearchCache=null;
+let gpsSearchPending=null;
+async function getGpsSearchOrigin(){
+  if(!navigator.geolocation || !navigator.permissions?.query)return null;
+  if(gpsSearchCache && Date.now()-gpsSearchCache.time<120000)return gpsSearchCache.point;
+  if(gpsSearchPending)return gpsSearchPending;
+  gpsSearchPending=(async()=>{
+    try{
+      const permission=await navigator.permissions.query({name:'geolocation'});
+      if(permission.state!=='granted')return null;
+      const point=await new Promise(resolve=>{
+        navigator.geolocation.getCurrentPosition(
+          p=>resolve({lat:p.coords.latitude,lon:p.coords.longitude}),
+          ()=>resolve(null),
+          {enableHighAccuracy:false,maximumAge:120000,timeout:3500}
+        );
+      });
+      if(validCoords(point))gpsSearchCache={point,time:Date.now()};
+      return validCoords(point)?point:null;
+    }catch{return null}
+  })();
+  try{return await gpsSearchPending}finally{gpsSearchPending=null}
+}
 async function getSearchOrigin(){const name=$('start').value.trim();if(!name)return null;if(state.start.name===name&&validCoords(state.start))return state.start;if(originLookup?.name===name)return originLookup.promise;const promise=(async()=>{try{const results=await lookup(name);if(!results.length)return null;const f=results[0];if($('start').value.trim()!==name)return null;state.start={name,lat:f.lat,lon:f.lon};return state.start}catch{return null}})();originLookup={name,promise};return promise}
-function setupAutocomplete(inputId,listId,onSelect,isStop=false){let timer,token=0;$(inputId).addEventListener('input',()=>{clearTimeout(timer);const q=$(inputId).value.trim(),t=++token;$(listId).replaceChildren();if(q.length<3)return;timer=setTimeout(async()=>{try{const origin=isStop?await getSearchOrigin():null;if(t!==token)return;const results=await lookup(q,origin,isStop&&validCoords(origin)?20:6);if(t!==token)return;results.forEach(x=>{const b=document.createElement('button');b.className='suggestion';b.textContent=x.name+(Number.isFinite(x.distanceKm)?' · '+x.distanceKm.toLocaleString('de-DE',{maximumFractionDigits:1})+' km Luftlinie':'');b.onclick=()=>{onSelect(x);$(listId).replaceChildren()};$(listId).append(b)})}catch(e){if(t===token)setStatus(e.message)}},350)})}
+function setupAutocomplete(inputId,listId,onSelect,isStop=false){let timer,token=0;$(inputId).addEventListener('input',()=>{clearTimeout(timer);const q=$(inputId).value.trim(),t=++token;$(listId).replaceChildren();if(q.length<3)return;timer=setTimeout(async()=>{try{const origin=isStop?( $('start').value.trim()?await getSearchOrigin():await getGpsSearchOrigin() ):null;if(t!==token)return;const results=await lookup(q,origin,isStop&&validCoords(origin)?20:6);if(t!==token)return;results.forEach(x=>{const b=document.createElement('button');b.className='suggestion';b.textContent=x.name+(Number.isFinite(x.distanceKm)?' · '+x.distanceKm.toLocaleString('de-DE',{maximumFractionDigits:1})+' km Luftlinie':'');b.onclick=()=>{onSelect(x);$(listId).replaceChildren()};$(listId).append(b)})}catch(e){if(t===token)setStatus(e.message)}},350)})}
 setupAutocomplete('search','suggestions',x=>addStop(x.name,x.lat,x.lon),true);
 setupAutocomplete('start','startSuggestions',x=>{state.start=x;originLookup=null;$('start').value=x.name});
 $('start').addEventListener('input',()=>{state.start={name:$('start').value,lat:null,lon:null};originLookup=null});
