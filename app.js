@@ -3,7 +3,37 @@ const $=id=>document.getElementById(id);
 const state={start:{name:'',lat:null,lon:null},stops:[],suggestions:[],startSuggestions:[]};
 const setStatus=s=>$('status').textContent=s;
 const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function render(){const root=$('stops');root.replaceChildren();$('count').textContent=state.stops.length;state.stops.forEach((s,i)=>{const item=document.createElement('div');item.className='stop'+(s.done?' done':'');item.draggable=true;item.dataset.index=i;const drag=document.createElement('span');drag.className='drag';drag.textContent='⠿';drag.title='Zum Verschieben ziehen';const done=document.createElement('input');done.type='checkbox';done.checked=!!s.done;done.title='Erledigt';done.addEventListener('change',()=>{s.done=done.checked;render()});const name=document.createElement('strong');name.className='name';name.textContent=`${i+1}. ${s.name}`;const up=document.createElement('button');up.textContent='↑';up.title='Nach oben';up.disabled=i===0;up.onclick=()=>move(i,i-1);const down=document.createElement('button');down.textContent='↓';down.title='Nach unten';down.disabled=i===state.stops.length-1;down.onclick=()=>move(i,i+1);const del=document.createElement('button');del.className='delete';del.textContent='✕';del.title='Entfernen';del.onclick=()=>{state.stops.splice(i,1);render()};item.append(drag,done,name,up,down,del);item.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',String(i));item.classList.add('dragging')});item.addEventListener('dragend',()=>item.classList.remove('dragging'));item.addEventListener('dragover',e=>e.preventDefault());item.addEventListener('drop',e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(Number.isInteger(from))move(from,i)});root.append(item)})}
+function displayParts(full){
+  const text=String(full||'').trim();
+  const parts=text.split(',').map(s=>s.trim()).filter(Boolean);
+  if(parts.length<2)return {title:text||'Unbenannter Stopp',address:''};
+  // Der gespeicherte Originaltext bleibt vollständig erhalten.
+  // Photon liefert häufig zuerst den Geschäfts- oder Ortsnamen.
+  return {title:parts[0],address:parts.slice(1).join(', ')};
+}
+function render(){
+  const root=$('stops');root.replaceChildren();$('count').textContent=state.stops.length;
+  state.stops.forEach((s,i)=>{
+    const item=document.createElement('div');item.className='stop'+(s.done?' done':'');item.draggable=true;item.dataset.index=i;
+    const drag=document.createElement('span');drag.className='drag';drag.textContent='⠿';drag.title='Zum Verschieben ziehen';drag.setAttribute('aria-hidden','true');
+    const done=document.createElement('input');done.type='checkbox';done.checked=!!s.done;done.title='Erledigt';done.setAttribute('aria-label','Stopp '+(i+1)+' erledigt');done.addEventListener('change',()=>{s.done=done.checked;render()});
+    const name=document.createElement('div');name.className='stop-info';
+    const parts=displayParts(s.name);
+    const title=document.createElement('strong');title.className='stop-title';title.textContent=(i+1)+'. '+parts.title;
+    const address=document.createElement('span');address.className='stop-address';address.textContent=parts.address;
+    name.append(title,address);name.title=s.name;
+    const up=document.createElement('button');up.textContent='↑';up.title='Nach oben';up.setAttribute('aria-label','Stopp nach oben');up.disabled=i===0;up.onclick=()=>move(i,i-1);
+    const down=document.createElement('button');down.textContent='↓';down.title='Nach unten';down.setAttribute('aria-label','Stopp nach unten');down.disabled=i===state.stops.length-1;down.onclick=()=>move(i,i+1);
+    const del=document.createElement('button');del.className='delete';del.textContent='✕';del.title='Entfernen';del.setAttribute('aria-label','Stopp entfernen');del.onclick=()=>{state.stops.splice(i,1);render()};
+    const controls=document.createElement('div');controls.className='stop-controls';controls.append(up,down,del);
+    item.append(drag,done,name,controls);
+    item.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',String(i));item.classList.add('dragging')});
+    item.addEventListener('dragend',()=>item.classList.remove('dragging'));
+    item.addEventListener('dragover',e=>e.preventDefault());
+    item.addEventListener('drop',e=>{e.preventDefault();const from=Number(e.dataTransfer.getData('text/plain'));if(Number.isInteger(from))move(from,i)});
+    root.append(item);
+  });
+}
 function move(a,b){if(a===b||a<0||b<0||a>=state.stops.length||b>=state.stops.length)return;state.stops.splice(b,0,state.stops.splice(a,1)[0]);render()}
 function addStop(name,lat=null,lon=null){name=name.trim();if(!name)return;state.stops.push({name,lat,lon,done:false});$('search').value='';$('suggestions').replaceChildren();render()}
 function label(f){const p=f.properties||{};return [p.name,p.street,p.housenumber,p.postcode,p.city,p.state,p.country].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(', ')}

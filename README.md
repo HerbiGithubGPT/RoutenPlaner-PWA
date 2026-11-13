@@ -32,3 +32,13 @@ Mikrofon-Schaltflächen neben Start- und Zwischenstopp-Adresse. Die Browser-Spra
 
 ## Version 4
 Zwischenstopp-Suche bevorzugt den Startpunkt und sortiert die gefundenen Photon-Ergebnisse nach Luftlinie. Bis zu 20 Treffer werden angefragt, sechs angezeigt. Ohne Startpunkt bleibt die Suche unverändert. Startpunkt-Suche bleibt global. Die lokale Speicherung bleibt unverändert.
+
+## Version 6 – Design D (Abgleich 13.11.2026)
+
+Basis: vom Benutzer bereitgestelltes Repository-ZIP `RoutenPlaner-PWA-main(3).zip`.
+Modernes, kompaktes Design mit zweizeiligen Zwischenstopps und aufklappbaren Werkzeugen.
+Adresssuche, GPS, Spracheingabe, OSRM, Navigation, Import/Export und die
+bestehenden localStorage-Schlüssel wurden nicht funktional geändert.
+Die Darstellung trennt den vorhandenen Adress-Text am ersten Komma; der
+vollständige Originalwert bleibt für Navigation und Speicherung erhalten.
+Vor dem produktiven Einsatz im Browser und auf Mobilgeräten testen.
