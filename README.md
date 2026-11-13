@@ -28,3 +28,7 @@ Im Abschnitt „Meine gespeicherten Routen“ einen Namen eingeben und „Unter 
 ## Version 3 – Spracheingabe
 
 Mikrofon-Schaltflächen neben Start- und Zwischenstopp-Adresse. Die Browser-Spracherkennung (Web Speech API) nutzt Deutsch (`de-DE`) und setzt den erkannten Text ins Eingabefeld. Anschließend bitte einen Adressvorschlag auswählen. Die Verfügbarkeit variiert nach Browser und Betriebssystem; alternativ kann die Mikrofontaste der Smartphone-Tastatur verwendet werden. Internet und Mikrofonberechtigung können erforderlich sein. Die bisherigen Speicher-Schlüssel bleiben unverändert.
+
+
+## Version 4
+Zwischenstopp-Suche bevorzugt den Startpunkt und sortiert die gefundenen Photon-Ergebnisse nach Luftlinie. Bis zu 20 Treffer werden angefragt, sechs angezeigt. Ohne Startpunkt bleibt die Suche unverändert. Startpunkt-Suche bleibt global. Die lokale Speicherung bleibt unverändert.
