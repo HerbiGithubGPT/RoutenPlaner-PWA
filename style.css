@@ -59,3 +59,11 @@ footer{padding:15px 20px 26px}
   .saved-panel .line{flex-direction:column}.saved-panel .line input{width:100%}
 }
 @media(max-width:360px){.stop .drag{display:none}.stop-controls button{min-width:25px}.stop{gap:4px}}
+
+/* PWA 7: aufklappbare Kartenübersicht */
+.map-panel{margin-top:15px;padding:12px;border:1px solid #dfe8f2;border-radius:14px;background:#f8fbff}
+.map-panel>summary{cursor:pointer;font-weight:650;color:#174b78;list-style-position:inside}
+#routeMap{height:340px;max-height:60vh;min-height:250px;border-radius:11px;overflow:hidden;background:#e5edf5;margin:12px 0}
+.map-pin{background:#1765bd;color:white;border:2px solid white;border-radius:50%;height:30px;width:30px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 2px 5px #0005}
+.map-pin.start{background:#168257}.map-pin.end{background:#d34141}
+@media(max-width:600px){#routeMap{height:300px}}

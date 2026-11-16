@@ -12,6 +12,7 @@ function displayParts(full){
   return {title:parts[0],address:parts.slice(1).join(', ')};
 }
 function render(){
+  invalidateMapRoute();
   const root=$('stops');root.replaceChildren();$('count').textContent=state.stops.length;
   state.stops.forEach((s,i)=>{
     const item=document.createElement('div');item.className='stop'+(s.done?' done':'');item.draggable=true;item.dataset.index=i;
@@ -70,7 +71,7 @@ async function getGpsSearchOrigin(){
 async function getSearchOrigin(){const name=$('start').value.trim();if(!name)return null;if(state.start.name===name&&validCoords(state.start))return state.start;if(originLookup?.name===name)return originLookup.promise;const promise=(async()=>{try{const results=await lookup(name);if(!results.length)return null;const f=results[0];if($('start').value.trim()!==name)return null;state.start={name,lat:f.lat,lon:f.lon};return state.start}catch{return null}})();originLookup={name,promise};return promise}
 function setupAutocomplete(inputId,listId,onSelect,isStop=false){let timer,token=0;$(inputId).addEventListener('input',()=>{clearTimeout(timer);const q=$(inputId).value.trim(),t=++token;$(listId).replaceChildren();if(q.length<3)return;timer=setTimeout(async()=>{try{const origin=isStop?( $('start').value.trim()?await getSearchOrigin():await getGpsSearchOrigin() ):null;if(t!==token)return;const results=await lookup(q,origin,isStop&&validCoords(origin)?20:6);if(t!==token)return;results.forEach(x=>{const b=document.createElement('button');b.className='suggestion';b.textContent=x.name+(Number.isFinite(x.distanceKm)?' · '+x.distanceKm.toLocaleString('de-DE',{maximumFractionDigits:1})+' km Luftlinie':'');b.onclick=()=>{onSelect(x);$(listId).replaceChildren()};$(listId).append(b)})}catch(e){if(t===token)setStatus(e.message)}},350)})}
 setupAutocomplete('search','suggestions',x=>addStop(x.name,x.lat,x.lon),true);
-setupAutocomplete('start','startSuggestions',x=>{state.start=x;originLookup=null;$('start').value=x.name});
+setupAutocomplete('start','startSuggestions',x=>{state.start=x;originLookup=null;$('start').value=x.name;invalidateMapRoute()});
 $('start').addEventListener('input',()=>{state.start={name:$('start').value,lat:null,lon:null};originLookup=null});
 // Optionale Browser-Spracherkennung. Die Adressvorschläge bleiben die Bestätigung.
 (function setupSpeechInput(){
@@ -112,16 +113,52 @@ $('start').addEventListener('input',()=>{state.start={name:$('start').value,lat:
 })();
 $('insert').onclick=()=>addStop($('search').value);
 $('add').onclick=()=>{$('search').focus();setStatus('Adresse eingeben und auf „Hinzufügen“ tippen.')};
-$('gps').onclick=()=>{if(!navigator.geolocation){setStatus('GPS wird nicht unterstützt.');return}setStatus('GPS-Standort wird ermittelt …');navigator.geolocation.getCurrentPosition(p=>{state.start={name:'Mein GPS-Standort',lat:p.coords.latitude,lon:p.coords.longitude};originLookup=null;$('start').value=state.start.name;setStatus('GPS-Standort übernommen.')},e=>setStatus('GPS nicht verfügbar: '+e.message),{enableHighAccuracy:true,timeout:15000})};
+$('gps').onclick=()=>{if(!navigator.geolocation){setStatus('GPS wird nicht unterstützt.');return}setStatus('GPS-Standort wird ermittelt …');navigator.geolocation.getCurrentPosition(p=>{state.start={name:'Mein GPS-Standort',lat:p.coords.latitude,lon:p.coords.longitude};originLookup=null;$('start').value=state.start.name;invalidateMapRoute();setStatus('GPS-Standort übernommen.')},e=>setStatus('GPS nicht verfügbar: '+e.message),{enableHighAccuracy:true,timeout:15000})};
 async function resolve(point){if(Number.isFinite(point.lat)&&Number.isFinite(point.lon))return point;const matches=await lookup(point.name,point===state.start?null:(validCoords(state.start)?state.start:null));if(!matches.length)throw Error('Adresse nicht gefunden: '+point.name);point.lat=matches[0].lat;point.lon=matches[0].lon;return point}
 function startPoint(){const name=$('start').value.trim();if(!name)throw Error('Bitte zuerst einen Startpunkt eingeben oder GPS verwenden.');if(state.start.name!==name)state.start={name,lat:null,lon:null};return state.start}
-$('optimize').onclick=async()=>{const btn=$('optimize');btn.disabled=true;try{const start=await resolve(startPoint());if(state.stops.length<2)throw Error('Mindestens zwei Zwischenstopps für die Optimierung eingeben.');setStatus('Adressen werden geprüft …');for(const s of state.stops)await resolve(s);const points=[start,...state.stops];const coords=points.map(p=>`${p.lon},${p.lat}`).join(';');const round=$('roundtrip').checked;const url=`https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&destination=any&roundtrip=${round?'true':'false'}&overview=false&steps=false`;setStatus('Route wird optimiert …');const r=await fetch(url);if(!r.ok)throw Error('Routing-Dienst nicht erreichbar');const j=await r.json();if(j.code!=='Ok'||!j.waypoints)throw Error('Route konnte nicht optimiert werden.');const order=j.waypoints.map((w,i)=>({i,order:w.waypoint_index})).filter(x=>x.i>0).sort((a,b)=>a.order-b.order).map(x=>state.stops[x.i-1]);if(order.length!==state.stops.length)throw Error('Ungültige Routing-Antwort');state.stops=order;render();const km=j.trips?.[0]?.distance/1000;setStatus(`Route optimiert!${Number.isFinite(km)?' Ca. '+km.toFixed(1)+' km':''}\nHinweis: Die Fahrstrecke basiert auf dem OSRM-Autoprofil.`)}catch(e){setStatus('Fehler: '+e.message)}finally{btn.disabled=false}};
+$('optimize').onclick=async()=>{const btn=$('optimize');btn.disabled=true;try{const start=await resolve(startPoint());if(state.stops.length<2)throw Error('Mindestens zwei Zwischenstopps für die Optimierung eingeben.');setStatus('Adressen werden geprüft …');for(const s of state.stops)await resolve(s);const points=[start,...state.stops];const coords=points.map(p=>`${p.lon},${p.lat}`).join(';');const round=$('roundtrip').checked;const url=`https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&destination=any&roundtrip=${round?'true':'false'}&overview=full&geometries=geojson&steps=false`;setStatus('Route wird optimiert …');const r=await fetch(url);if(!r.ok)throw Error('Routing-Dienst nicht erreichbar');const j=await r.json();if(j.code!=='Ok'||!j.waypoints)throw Error('Route konnte nicht optimiert werden.');const order=j.waypoints.map((w,i)=>({i,order:w.waypoint_index})).filter(x=>x.i>0).sort((a,b)=>a.order-b.order).map(x=>state.stops[x.i-1]);if(order.length!==state.stops.length)throw Error('Ungültige Routing-Antwort');state.stops=order;render();setMapRoute(j.trips?.[0]?.geometry);const km=j.trips?.[0]?.distance/1000;setStatus(`Route optimiert!${Number.isFinite(km)?' Ca. '+km.toFixed(1)+' km':''}\nHinweis: Die Fahrstrecke basiert auf dem OSRM-Autoprofil.`)}catch(e){setStatus('Fehler: '+e.message)}finally{btn.disabled=false}};
 $('navigate').onclick=()=>{try{const start=startPoint();if(!state.stops.length)throw Error('Bitte mindestens einen Stopp hinzufügen.');const all=[start.name,...state.stops.map(s=>s.name),...($('roundtrip').checked?[start.name]:[])];if(all.length>10)setStatus('Viele Stopps: Google Maps wird in Teilstrecken geöffnet. Bitte die nächste Teilstrecke nach Ankunft öffnen.');const chunks=[];let i=0;while(i<all.length-1){const end=Math.min(i+8,all.length-1);const segment=all.slice(i,end+1);const origin=segment[0]==='Mein GPS-Standort'&&start.lat!==null?`${start.lat},${start.lon}`:segment[0];const dest=segment.at(-1)==='Mein GPS-Standort'&&start.lat!==null?`${start.lat},${start.lon}`:segment.at(-1);const waypoints=segment.slice(1,-1).join('|');chunks.push('https://www.google.com/maps/dir/?api=1&travelmode=driving&origin='+encodeURIComponent(origin)+'&destination='+encodeURIComponent(dest)+(waypoints?'&waypoints='+encodeURIComponent(waypoints):''));i=end}if(chunks.length===1){window.open(chunks[0],'_blank','noopener')}else{const root=$('status');root.replaceChildren(document.createTextNode('Route besteht aus '+chunks.length+' Teilstrecken: '));chunks.forEach((u,i)=>{const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.textContent=`Teilstrecke ${i+1} öffnen`;a.style.display='block';root.append(a)})}}catch(e){setStatus(e.message)}};
 $('save').onclick=()=>{localStorage.setItem('rp-pwa-route',JSON.stringify({start:state.start,stops:state.stops,roundtrip:$('roundtrip').checked}));setStatus('Route auf diesem Gerät gespeichert.')};
 $('load').onclick=()=>{try{const d=JSON.parse(localStorage.getItem('rp-pwa-route'));if(!d)throw Error('Noch keine gespeicherte Route vorhanden.');state.start=d.start||{name:'',lat:null,lon:null};state.stops=Array.isArray(d.stops)?d.stops:[];$('start').value=state.start.name||'';$('roundtrip').checked=d.roundtrip!==false;render();setStatus('Route geladen.')}catch(e){setStatus(e.message)}};
 $('clear').onclick=()=>{if(confirm('Aktuelle Route wirklich leeren?')){state.start={name:'',lat:null,lon:null};state.stops=[];$('start').value='';render();setStatus('Route geleert.')}};
 $('export').onclick=()=>{const rows=['Stopp;Adresse',...state.stops.map((s,i)=>`${i+1};"${s.name.replaceAll('"','""')}"`)];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'}));a.download='RoutenPlaner-Stopps.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)};
 $('file').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const text=await file.text();const lines=text.replace(/^\ufeff/,'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);let count=0;for(const line of lines){if(/^stopp\s*[;,]/i.test(line)||/^adresse\s*[;,]/i.test(line))continue;let value=line;if(/^[0-9]+;/.test(line))value=line.replace(/^[0-9]+;/,'').replace(/^"|"$/g,'').replaceAll('""','"');else if(/^[0-9]+,/.test(line))value=line.replace(/^[0-9]+,/,'');if(value){addStop(value);count++}}setStatus(`${count} Stopps importiert. Bitte Adressen kontrollieren.`);e.target.value=''};
+// PWA 7: Kartenübersicht. Leaflet wird erst beim Öffnen geladen.
+// Keine zusätzlichen API-Schlüssel oder Änderungen an der Google-Maps-Navigation.
+let routeGeometry=null, leafletMap=null, mapLayer=null, leafletPromise=null;
+function invalidateMapRoute(){routeGeometry=null;if($('mapPanel')?.open)updateRouteMap()}
+function setMapRoute(geometry){routeGeometry=geometry?.type==='LineString'&&Array.isArray(geometry.coordinates)?geometry:null;if($('mapPanel')?.open)updateRouteMap()}
+function loadLeaflet(){
+  if(window.L)return Promise.resolve(window.L);
+  if(leafletPromise)return leafletPromise;
+  leafletPromise=new Promise((resolve,reject)=>{
+    if(!document.querySelector('link[data-leaflet]')){const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';css.crossOrigin='anonymous';css.dataset.leaflet='1';document.head.append(css)}
+    const script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';script.crossOrigin='anonymous';script.onload=()=>resolve(window.L);script.onerror=()=>reject(Error('Kartenbibliothek konnte nicht geladen werden. Internetverbindung prüfen.'));document.head.append(script);
+  }).catch(e=>{leafletPromise=null;throw e});
+  return leafletPromise;
+}
+let mapUpdateId=0;
+async function updateRouteMap(){
+  if(!$('mapPanel').open)return;
+  const request=++mapUpdateId;
+  const message=$('mapStatus');
+  const points=[{...state.start,kind:'start'},...state.stops.map((s,i)=>({...s,kind:'stop',number:i+1}))].filter(validCoords);
+  if(!points.length){message.textContent='Noch keine aufgelösten Adressen vorhanden. Bitte Adressen auswählen oder Route optimieren.';if(leafletMap&&mapLayer)mapLayer.clearLayers();return}
+  message.textContent=routeGeometry?'Optimierte Fahrstrecke und Stopps':'Stopps auf der Karte (ohne Fahrstrecke). Für die Fahrstrecke bitte optimieren.';
+  try{
+    const L=await loadLeaflet();if(request!==mapUpdateId||!$('mapPanel').open)return;
+    if(!leafletMap){leafletMap=L.map('routeMap',{scrollWheelZoom:false});L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap-Mitwirkende',maxZoom:19}).addTo(leafletMap);mapLayer=L.featureGroup().addTo(leafletMap)}
+    mapLayer.clearLayers();
+    const lastIndex=points.length-1;
+    points.forEach((point,i)=>{const isEnd=!$('roundtrip').checked&&i===lastIndex&&i>0;const cls=point.kind==='start'?'start':isEnd?'end':'';const content=point.kind==='start'?'S':String(point.number);const icon=L.divIcon({className:'',html:'<div class="map-pin '+cls+'">'+content+'</div>',iconSize:[30,30],iconAnchor:[15,15]});L.marker([point.lat,point.lon],{icon}).bindPopup((point.kind==='start'?'Startpunkt':`Stopp ${point.number}`)+': '+escapeHtml(point.name)).addTo(mapLayer)});
+    if(routeGeometry){const latlngs=routeGeometry.coordinates.filter(c=>Array.isArray(c)&&Number.isFinite(c[0])&&Number.isFinite(c[1])).map(c=>[c[1],c[0]]);if(latlngs.length>1)L.polyline(latlngs,{color:'#1765bd',weight:5,opacity:.85}).addTo(mapLayer)}
+    if(mapLayer.getLayers().length){leafletMap.fitBounds(mapLayer.getBounds().pad(.12),{maxZoom:15})}
+    setTimeout(()=>leafletMap?.invalidateSize(),80);
+  }catch(e){if(request===mapUpdateId)message.textContent='Karte nicht verfügbar: '+e.message}
+}
+$('mapPanel').addEventListener('toggle',()=>{if($('mapPanel').open)updateRouteMap();else mapUpdateId++});
+$('roundtrip').addEventListener('change',invalidateMapRoute);
+$('start').addEventListener('input',invalidateMapRoute);
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 render();
 
