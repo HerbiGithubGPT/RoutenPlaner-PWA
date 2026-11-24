@@ -42,3 +42,7 @@ bestehenden localStorage-Schlüssel wurden nicht funktional geändert.
 Die Darstellung trennt den vorhandenen Adress-Text am ersten Komma; der
 vollständige Originalwert bleibt für Navigation und Speicherung erhalten.
 Vor dem produktiven Einsatz im Browser und auf Mobilgeräten testen.
+
+## Version 8 – Adresssuche
+
+Relevanz vor Luftlinie, Abkürzungen und alternative Parkplatz-Suchbegriffe; doppelte Vorschläge werden entfernt.

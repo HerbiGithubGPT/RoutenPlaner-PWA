@@ -41,7 +41,18 @@ function label(f){const p=f.properties||{};return [p.name,p.street,p.housenumber
 // Version 5: Suche am Startpunkt, sonst am bereits erlaubten GPS-Standort.
 function validCoords(p){return p&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)}
 function distanceKm(a,b){const rad=x=>x*Math.PI/180;const dl=rad(b.lat-a.lat),dn=rad(b.lon-a.lon);const h=Math.sin(dl/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dn/2)**2;return 12742*Math.asin(Math.min(1,Math.sqrt(h)))}
-async function lookup(q,origin=null,limit=6){const u=new URL('https://photon.komoot.io/api/');u.searchParams.set('q',q);u.searchParams.set('lang','de');u.searchParams.set('limit',String(limit));if(validCoords(origin)){u.searchParams.set('lat',String(origin.lat));u.searchParams.set('lon',String(origin.lon))}const r=await fetch(u);if(!r.ok)throw Error('Adressdienst nicht erreichbar');const j=await r.json();const found=(j.features||[]).filter(f=>Array.isArray(f.geometry?.coordinates)).map(f=>({name:label(f),lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]})).filter(validCoords);if(validCoords(origin)){found.forEach(f=>f.distanceKm=distanceKm(origin,f));found.sort((a,b)=>a.distanceKm-b.distanceKm)}return found.slice(0,6)}
+// Namen und Ortsangaben zuerst, Luftlinie nur bei gleicher Relevanz.
+function searchWords(s){return String(s||'').toLowerCase().replace(/ß/g,'ss').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(?:hbf|bhf|hauptbahnhof)\b/g,'bahnhof').replace(/\b(?:parkhaus|tiefgarage)\b/g,'parking').replace(/[^a-z0-9]+/g,' ').trim().split(/ +/).filter(Boolean)}
+function relevance(q,p){const words=searchWords(q), primary=searchWords([p.name,p.street,p.housenumber].filter(Boolean).join(' ')), all=searchWords(Object.values(p).filter(v=>typeof v==='string').join(' '));if(p.osm_key==='railway'&&p.osm_value==='station')all.push('bahnhof');if(p.osm_value==='parking')all.push('parking');const hit=(w,arr)=>arr.includes(w)|| (w.length>=3&&arr.some(t=>t.startsWith(w)));if(!words.every(w=>hit(w,all)))return -1;return words.reduce((n,w)=>n+(primary.includes(w)?4:hit(w,primary)?2:0),0)}
+function searchVariants(q){const expanded=q.replace(/\b(?:hbf|bhf)\b/gi,'Bahnhof');const alternate=expanded.replace(/\bParkhaus\b/gi,'Tiefgarage');return [...new Set([expanded,alternate,q])]}
+async function lookup(q,origin=null,limit=6){
+  const found=[];const seen=new Set();let success=false;
+  async function fetchMatches(term,bias){const u=new URL('https://photon.komoot.io/api/');u.searchParams.set('q',term);u.searchParams.set('lang','de');u.searchParams.set('limit','30');if(bias&&validCoords(origin)){u.searchParams.set('lat',String(origin.lat));u.searchParams.set('lon',String(origin.lon))}const r=await fetch(u);if(!r.ok)throw Error('Adressdienst nicht erreichbar');const j=await r.json();success=true;for(const f of j.features||[]){const p=f.properties||{},score=relevance(q,p),xy=f.geometry?.coordinates;if(score<0||!Array.isArray(xy))continue;const x={name:label(f),lon:xy[0],lat:xy[1],score};if(!validCoords(x)||!x.name)continue;const key=x.name.toLowerCase();if(seen.has(key))continue;seen.add(key);if(validCoords(origin))x.distanceKm=distanceKm(origin,x);found.push(x)}}
+  const variants=searchVariants(q);const specific=searchWords(q).length>1;
+  for(const term of variants){try{await fetchMatches(term,!specific)}catch(e){if(!success&&term===variants[variants.length-1])throw e}if(found.length)break}
+  if(validCoords(origin)&&specific){try{await fetchMatches(variants[0],true)}catch(e){if(!success)throw e}}
+  found.sort((a,b)=>b.score-a.score||(a.distanceKm??0)-(b.distanceKm??0));return found.slice(0,6)
+}
 let originLookup=null;
 // GPS ist nur ein Suchbezug, KEIN Ersatz für den Startpunkt der Route.
 // Keine neue Standort-Berechtigungsabfrage während des Tippens auslösen.
