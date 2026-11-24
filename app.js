@@ -44,14 +44,23 @@ function distanceKm(a,b){const rad=x=>x*Math.PI/180;const dl=rad(b.lat-a.lat),dn
 // Namen und Ortsangaben zuerst, Luftlinie nur bei gleicher Relevanz.
 function searchWords(s){return String(s||'').toLowerCase().replace(/ß/g,'ss').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(?:hbf|bhf|hauptbahnhof)\b/g,'bahnhof').replace(/\b(?:parkhaus|tiefgarage)\b/g,'parking').replace(/[^a-z0-9]+/g,' ').trim().split(/ +/).filter(Boolean)}
 function relevance(q,p){const words=searchWords(q), primary=searchWords([p.name,p.street,p.housenumber].filter(Boolean).join(' ')), all=searchWords(Object.values(p).filter(v=>typeof v==='string').join(' '));if(p.osm_key==='railway'&&p.osm_value==='station')all.push('bahnhof');if(p.osm_value==='parking')all.push('parking');const hit=(w,arr)=>arr.includes(w)|| (w.length>=3&&arr.some(t=>t.startsWith(w)));if(!words.every(w=>hit(w,all)))return -1;return words.reduce((n,w)=>n+(primary.includes(w)?4:hit(w,primary)?2:0),0)}
-function searchVariants(q){const expanded=q.replace(/\b(?:hbf|bhf)\b/gi,'Bahnhof');const alternate=expanded.replace(/\bParkhaus\b/gi,'Tiefgarage');return [...new Set([expanded,alternate,q])]}
+function searchVariants(q){const expanded=q.replace(/\b(?:hbf|bhf)\b/gi,'Bahnhof');const alternate=expanded.replace(/\b(?:Parkhaus|Tiefgarage)\b/gi,m=>m.toLowerCase()==='parkhaus'?'Tiefgarage':'Parkhaus');const shorter=expanded.replace(/\b(?:Parkhaus|Tiefgarage)\b/gi,'').trim();return [...new Set([expanded,alternate,q,shorter].filter(Boolean))]}
+function rankMatches(found,limit=6){const seen=new Set();return found.sort((a,b)=>b.score-a.score||(a.distanceKm??0)-(b.distanceKm??0)).filter(x=>{const k=x.name.toLowerCase();if(seen.has(k))return false;seen.add(k);return true}).slice(0,Math.min(limit,6))}
+function candidate(q,p,xy,origin){const score=relevance(q,p);if(score<0||!Array.isArray(xy))return null;const x={name:label({properties:p}),lon:Number(xy[0]),lat:Number(xy[1]),score};if(!validCoords(x)||!x.name)return null;if(validCoords(origin))x.distanceKm=distanceKm(origin,x);return x}
 async function lookup(q,origin=null,limit=6){
-  const found=[];const seen=new Set();let success=false;
-  async function fetchMatches(term,bias){const u=new URL('https://photon.komoot.io/api/');u.searchParams.set('q',term);u.searchParams.set('lang','de');u.searchParams.set('limit','30');if(bias&&validCoords(origin)){u.searchParams.set('lat',String(origin.lat));u.searchParams.set('lon',String(origin.lon))}const r=await fetch(u);if(!r.ok)throw Error('Adressdienst nicht erreichbar');const j=await r.json();success=true;for(const f of j.features||[]){const p=f.properties||{},score=relevance(q,p),xy=f.geometry?.coordinates;if(score<0||!Array.isArray(xy))continue;const x={name:label(f),lon:xy[0],lat:xy[1],score};if(!validCoords(x)||!x.name)continue;const key=x.name.toLowerCase();if(seen.has(key))continue;seen.add(key);if(validCoords(origin))x.distanceKm=distanceKm(origin,x);found.push(x)}}
-  const variants=searchVariants(q);const specific=searchWords(q).length>1;
-  for(const term of variants){try{await fetchMatches(term,!specific)}catch(e){if(!success&&term===variants[variants.length-1])throw e}if(found.length)break}
-  if(validCoords(origin)&&specific){try{await fetchMatches(variants[0],true)}catch(e){if(!success)throw e}}
-  found.sort((a,b)=>b.score-a.score||(a.distanceKm??0)-(b.distanceKm??0));return found.slice(0,6)
+  const found=[];let success=false;
+  async function fetchMatches(term,bias){const u=new URL('https://photon.komoot.io/api/');u.searchParams.set('q',term);u.searchParams.set('lang','de');u.searchParams.set('limit','30');if(bias&&validCoords(origin)){u.searchParams.set('lat',String(origin.lat));u.searchParams.set('lon',String(origin.lon))}const r=await fetch(u,{signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error('Adressdienst nicht erreichbar');const j=await r.json();success=true;for(const f of j.features||[]){const x=candidate(q,f.properties||{},f.geometry?.coordinates,origin);if(x)found.push(x)}}
+  const variants=searchVariants(q),specific=searchWords(q).length>1;
+  for(const term of variants){try{await fetchMatches(term,!specific)}catch{}if(found.length&&!/\b(?:Parkhaus|Tiefgarage)\b/i.test(q))break}
+  if(validCoords(origin)&&specific){try{await fetchMatches(variants[0],true)}catch{}}
+  if(!success)throw Error('Adressdienst nicht erreichbar');return rankMatches(found,limit);
+}
+// Nominatim ausschließlich nach ausdrücklichem Klick, niemals als Autocomplete.
+let extraPending=false,lastExtra=0;const extraCache=new Map();
+async function extraLookup(q,origin){
+  const key=q.trim().toLowerCase();let rows=extraCache.get(key);
+  if(!rows){if(extraPending||Date.now()-lastExtra<1100)throw Error('Bitte kurz warten und erneut suchen.');extraPending=true;lastExtra=Date.now();try{const u=new URL('https://nominatim.openstreetmap.org/search');u.searchParams.set('q',q);u.searchParams.set('format','jsonv2');u.searchParams.set('addressdetails','1');u.searchParams.set('namedetails','1');u.searchParams.set('accept-language','de');u.searchParams.set('limit','20');const r=await fetch(u,{signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error('Zusatzsuche derzeit nicht erreichbar');rows=await r.json();if(!Array.isArray(rows))throw Error('Ungültige Antwort der Zusatzsuche');if(extraCache.size>=100)extraCache.delete(extraCache.keys().next().value);extraCache.set(key,rows)}finally{extraPending=false}}
+  return rows.map(r=>{const a=r.address||{};const p={name:r.name||r.namedetails?.name||'',street:a.road,housenumber:a.house_number,postcode:a.postcode,city:a.city||a.town||a.village||a.municipality,state:a.state,country:a.country,osm_key:r.category||r.class,osm_value:r.type,aliases:Object.values(r.namedetails||{}).filter(v=>typeof v==='string').join(' '),locality:[a.city,a.town,a.village,a.municipality,a.suburb].filter(Boolean).join(' ')};return candidate(q,p,[r.lon,r.lat],origin)}).filter(Boolean);
 }
 let originLookup=null;
 // GPS ist nur ein Suchbezug, KEIN Ersatz für den Startpunkt der Route.
@@ -80,7 +89,15 @@ async function getGpsSearchOrigin(){
   try{return await gpsSearchPending}finally{gpsSearchPending=null}
 }
 async function getSearchOrigin(){const name=$('start').value.trim();if(!name)return null;if(state.start.name===name&&validCoords(state.start))return state.start;if(originLookup?.name===name)return originLookup.promise;const promise=(async()=>{try{const results=await lookup(name);if(!results.length)return null;const f=results[0];if($('start').value.trim()!==name)return null;state.start={name,lat:f.lat,lon:f.lon};return state.start}catch{return null}})();originLookup={name,promise};return promise}
-function setupAutocomplete(inputId,listId,onSelect,isStop=false){let timer,token=0;$(inputId).addEventListener('input',()=>{clearTimeout(timer);const q=$(inputId).value.trim(),t=++token;$(listId).replaceChildren();if(q.length<3)return;timer=setTimeout(async()=>{try{const origin=isStop?( $('start').value.trim()?await getSearchOrigin():await getGpsSearchOrigin() ):null;if(t!==token)return;const results=await lookup(q,origin,isStop&&validCoords(origin)?20:6);if(t!==token)return;results.forEach(x=>{const b=document.createElement('button');b.className='suggestion';b.textContent=x.name+(Number.isFinite(x.distanceKm)?' · '+x.distanceKm.toLocaleString('de-DE',{maximumFractionDigits:1})+' km Luftlinie':'');b.onclick=()=>{onSelect(x);$(listId).replaceChildren()};$(listId).append(b)})}catch(e){if(t===token)setStatus(e.message)}},350)})}
+function setupAutocomplete(inputId,listId,onSelect,isStop=false){
+  let timer,token=0;
+  $(inputId).addEventListener('input',()=>{clearTimeout(timer);const q=$(inputId).value.trim(),t=++token;$(listId).replaceChildren();if(q.length<3)return;
+    timer=setTimeout(async()=>{const origin=isStop?($('start').value.trim()?await getSearchOrigin():await getGpsSearchOrigin()):null;if(t!==token)return;let results=[];
+      function show(items){$(listId).replaceChildren();items.forEach(x=>{const b=document.createElement('button');b.className='suggestion';b.textContent=x.name+(Number.isFinite(x.distanceKm)?' · '+x.distanceKm.toLocaleString('de-DE',{maximumFractionDigits:1})+' km Luftlinie':'');b.onclick=()=>{++token;onSelect(x);$(listId).replaceChildren()};$(listId).append(b)});const extra=document.createElement('button');extra.className='suggestion';extra.textContent='Weitere Treffer suchen (OpenStreetMap / Nominatim)';extra.onclick=async()=>{extra.disabled=true;extra.textContent='Zusatzsuche läuft …';try{const more=await extraLookup(q,origin);if(t!==token||$(inputId).value.trim()!==q)return;results=rankMatches([...results,...more]);show(results);if(!more.length)setStatus('Keine weiteren passenden Treffer. Bitte Suchbegriff ändern.')}catch(e){if(t===token)setStatus(e.message)}finally{extra.disabled=false;extra.textContent='Weitere Treffer suchen (OpenStreetMap / Nominatim)'}};$(listId).append(extra)}
+      try{results=await lookup(q,origin)}catch(e){if(t===token)setStatus(e.message)}if(t!==token||$(inputId).value.trim()!==q)return;show(results);
+    },350);
+  });
+}
 setupAutocomplete('search','suggestions',x=>addStop(x.name,x.lat,x.lon),true);
 setupAutocomplete('start','startSuggestions',x=>{state.start=x;originLookup=null;$('start').value=x.name;invalidateMapRoute()});
 $('start').addEventListener('input',()=>{state.start={name:$('start').value,lat:null,lon:null};originLookup=null});

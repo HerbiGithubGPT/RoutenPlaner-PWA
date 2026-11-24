@@ -46,3 +46,6 @@ Vor dem produktiven Einsatz im Browser und auf Mobilgeräten testen.
 ## Version 8 – Adresssuche
 
 Relevanz vor Luftlinie, Abkürzungen und alternative Parkplatz-Suchbegriffe; doppelte Vorschläge werden entfernt.
+
+## Version 9 – Erweiterte Ortssuche
+Photon prüft bei Parkplatzsuchen weitere Namensvarianten. Über „Weitere Treffer suchen“ kann Nominatim ausdrücklich abgefragt werden; keine Nominatim-Autovervollständigung. Ergebnisse werden gemeinsam nach Relevanz und anschließend Luftlinie sortiert. Die Zusatzsuche ist für gelegentliche manuelle Nutzung gedacht; bei größerem Nutzeraufkommen einen geeigneten eigenen oder vertraglich zugelassenen Dienst einsetzen. Nominatim-Nutzungsbedingungen: https://operations.osmfoundation.org/policies/nominatim/ . Suchbegriffe werden bei Nutzung an den jeweiligen Dienst übertragen.
