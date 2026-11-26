@@ -49,3 +49,6 @@ Relevanz vor Luftlinie, Abkürzungen und alternative Parkplatz-Suchbegriffe; dop
 
 ## Version 9 – Erweiterte Ortssuche
 Photon prüft bei Parkplatzsuchen weitere Namensvarianten. Über „Weitere Treffer suchen“ kann Nominatim ausdrücklich abgefragt werden; keine Nominatim-Autovervollständigung. Ergebnisse werden gemeinsam nach Relevanz und anschließend Luftlinie sortiert. Die Zusatzsuche ist für gelegentliche manuelle Nutzung gedacht; bei größerem Nutzeraufkommen einen geeigneten eigenen oder vertraglich zugelassenen Dienst einsetzen. Nominatim-Nutzungsbedingungen: https://operations.osmfoundation.org/policies/nominatim/ . Suchbegriffe werden bei Nutzung an den jeweiligen Dienst übertragen.
+
+## Version 10 – Fehlertolerante Suche
+Tippfehler und Buchstabendreher werden bei der Bewertung berücksichtigt. Bei schwachen Treffern werden begrenzte alternative Photon-Suchanfragen mit kürzeren Präfixen versucht. Exakte Treffer haben Vorrang, Entfernung entscheidet bei gleicher Relevanz. Ähnliche Treffer werden gekennzeichnet und müssen vor der Routenberechnung ausgewählt werden. Nominatim bleibt eine manuelle Zusatzsuche. Die Trefferqualität hängt weiterhin von den externen Diensten ab.
